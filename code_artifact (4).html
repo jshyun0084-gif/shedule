@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>헤드헌팅 면접 스케쥴 조율 시스템</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- EmailJS SDK -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        input, select, button {
+            font-size: 15px !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- 상단 헤더 -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="bg-indigo-600 text-white p-2 rounded-lg shrink-0">
+                    <i class="fa-solid fa-calendar-circle-user text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base md:text-lg text-slate-900 leading-tight">인터뷰 스케쥴 매니저</h1>
+                    <p class="text-[11px] text-slate-500">인사팀 - 헤드헌터 - 후보자 간의 원스톱 일정 조율</p>
+                </div>
+            </div>
+            
+            <!-- 역할 전환 탭 (헤드헌터 전용 - 일반 유입 시 가려짐) -->
+            <div class="grid grid-cols-3 bg-slate-100 p-1 rounded-lg border border-slate-200 w-full md:w-auto" id="roleTabs">
+                <button onclick="switchRole('hr')" id="tab-hr" class="px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-indigo-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1">
+                    <i class="fa-solid fa-building-user text-[13px] sm:text-xs"></i><span>인사팀</span>
+                </button>
+                <button onclick="switchRole('candidate')" id="tab-candidate" class="px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1">
+                    <i class="fa-solid fa-user-tie text-[13px] sm:text-xs"></i><span>후보자</span>
+                </button>
+                <button onclick="switchRole('headhunter')" id="tab-headhunter" class="px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1">
+                    <i class="fa-solid fa-briefcase text-[13px] sm:text-xs"></i><span>헤드헌터</span>
+                </button>
+            </div>
+
+            <!-- 전용 접속 모드 배지 (URL 파라미터가 있을 시 렌더링) -->
+            <div id="role-badge-container" class="hidden w-full md:w-auto flex justify-center md:justify-end"></div>
+        </div>
+    </header>
+
+    <!-- 무로그인 안내 알림 탑바 -->
+    <div class="bg-emerald-50 border-b border-emerald-100 px-4 py-2 text-center text-xs text-emerald-800 font-medium flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+        <span><strong>보안 통신 터널링:</strong> 별도의 회원가입 없이 암호화된 전용 세션 파라미터를 통하여 접근 권한이 엄격히 자동 보장됩니다.</span>
+    </div>
+
+    <!-- 메인 레이아웃 -->
+    <main class="flex-grow max-w-6xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- 왼쪽 및 중간: 메인 작업 영역 -->
+        <div class="lg:col-span-2 space-y-6">
+            
+            <!-- [1] 인사팀 화면 -->
+            <section id="panel-hr" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-6">
+                <div class="border-b border-slate-100 pb-4 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span class="text-indigo-600"><i class="fa-solid fa-building-user"></i></span>
+                            인터뷰 일정 정보 등록 (인사팀)
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">후보자에게 제안할 일정을 입력해 주세요. (1순위 필수, 2~4순위는 선택)</p>
+                    </div>
+                    <span class="bg-indigo-50 text-indigo-700 text-xs px-2.5 py-1 rounded-full font-bold border border-indigo-100 shrink-0">Step 1</span>
+                </div>
+
+                <!-- 이전 실패한 일정 경고 및 취소선 리스트 -->
+                <div id="rejected-slots-warning" class="bg-rose-50 border border-rose-150 p-4 rounded-xl text-xs space-y-2 hidden">
+                    <p class="font-bold text-rose-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-exclamation text-rose-600"></i>
+                        후보자가 불가능하다고 회신한 일정 목록 (피해서 입력해 주세요)
+                    </p>
+                    <ul class="list-disc list-inside text-rose-700 pl-1 space-y-1" id="rejected-slots-list">
+                        <!-- 동적으로 이전 실패 일정이 빨간 줄로 표시됨 -->
+                    </ul>
+                    <div class="mt-2 text-[11px] text-slate-600 font-medium bg-white p-2.5 rounded-lg border border-rose-200" id="rejected-remarks-box">
+                        <span class="text-rose-600 font-bold block mb-1">💡 후보자 대안일정 제안 의견:</span>
+                        <p id="rejected-remarks-text" class="italic whitespace-pre-wrap text-slate-700"></p>
+                    </div>
+                </div>
+
+                <!-- 기본 정보 입력 (헤드헌터 탭과 실시간 상호 양방향 동기화) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">회사명</label>
+                        <input type="text" id="hr-company" oninput="syncInputs('hr-company', 'hh-input-company')" value="㈜테크이노베이션" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">인사담당자 이메일</label>
+                        <input type="email" id="hr-email" oninput="syncInputs('hr-email', 'hh-input-hr-email')" value="hr@techinno.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">후보자 이름</label>
+                        <input type="text" id="candidate-name" oninput="syncInputs('candidate-name', 'hh-input-cand-name')" value="홍길동" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">후보자 이메일</label>
+                        <input type="email" id="candidate-email" oninput="syncInputs('candidate-email', 'hh-input-cand-email')" value="candidate@email.com" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                    </div>
+                </div>
+
+                <!-- 면접 상세 설정 (대면면접 첫 번째 배치) -->
+                <div class="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-150">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">인터뷰 방식</label>
+                            <select id="interview-method" onchange="toggleLocationField()" class="w-full px-3 py-2 border border-slate-300 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="대면면접" selected>대면면접 (직접 대면)</option>
+                                <option value="Google Meet 화상면접">Google Meet (화상면접)</option>
+                                <option value="Zoom 화상면접">Zoom (화상면접)</option>
+                                <option value="유선 면접">전화 인터뷰</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">예상 소요 시간</label>
+                            <select id="interview-duration" class="w-full px-3 py-2 border border-slate-300 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="10분">10분</option>
+                                <option value="20분">20분</option>
+                                <option value="30분">30분</option>
+                                <option value="40분">40분</option>
+                                <option value="50분">50분</option>
+                                <option value="1시간">1시간</option>
+                                <option value="1시간 10분">1시간 10분</option>
+                                <option value="1시간 20분">1시간 20분</option>
+                                <option value="1시간 30분" selected>1시간 30분</option>
+                                <option value="1시간 40분">1시간 40분</option>
+                                <option value="1시간 50분">1시간 50분</option>
+                                <option value="2시간">2시간</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- 대면 면접 전용 장소 입력창 -->
+                    <div id="location-field-container" class="transition-all duration-300">
+                        <label class="block text-xs font-bold text-rose-600 uppercase tracking-wider mb-1">면접 진행 장소</label>
+                        <input type="text" id="interview-location" value="본사 3층 대회의실 (서초구 서초대로 123)" placeholder="예: 본사 3층 대회의실 (서초구 서초대로 123)" class="w-full px-3 py-2 border border-rose-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white">
+                    </div>
+                </div>
+
+                <!-- 일정 제안 섹션 -->
+                <div class="space-y-3">
+                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">면접 가능 시간대 (최대 4순위 / 2순위부터 "입력하지 않음" 선택 가능)</label>
+                    <div id="time-slot-container" class="space-y-3">
+                        <!-- JS에서 동적으로 4개의 슬롯을 생성 -->
+                    </div>
+                </div>
+
+                <!-- 제출 버튼 -->
+                <div class="pt-2">
+                    <button type="button" onclick="submitHRProposal()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-md active:scale-[0.99] transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-clipboard-check"></i> 일정 입력하기
+                    </button>
+                </div>
+            </section>
+
+            <!-- [2] 후보자 화면 -->
+            <section id="panel-candidate" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-6 hidden">
+                <div class="border-b border-slate-100 pb-4 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span class="text-emerald-600"><i class="fa-solid fa-user-tie"></i></span>
+                            일정 선택 및 피드백 (후보자)
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">인사팀이 제안한 각 시간대별 가능 여부를 최종 체크해 주세요.</p>
+                    </div>
+                    <span class="bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1 rounded-full font-bold border border-emerald-100 shrink-0">Step 2</span>
+                </div>
+
+                <!-- 수신된 면접 정보 정보 요약 박스 -->
+                <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                        <p class="text-slate-400 font-semibold mb-0.5">대상 회사 / 인사 이메일</p>
+                        <p class="font-bold text-slate-800" id="cond-company">㈜테크이노베이션 (hr@techinno.com)</p>
+                    </div>
+                    <div>
+                        <p class="text-slate-400 font-semibold mb-0.5">면접 방식 / 예상 소요시간</p>
+                        <p class="font-bold text-slate-800" id="cond-details">대면면접 / 1시간 30분</p>
+                    </div>
+                </div>
+
+                <!-- 스케줄 선택 리스트 -->
+                <div class="space-y-4">
+                    <h3 class="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-list-ol text-indigo-500"></i> 순위별 일정 가능 여부 체크
+                    </h3>
+                    <div id="candidate-slots-list" class="space-y-3">
+                        <!-- 인사팀 제안 슬롯 렌더링 -->
+                    </div>
+                </div>
+
+                <!-- 후보자 전용 가능일정 피드백 비고란 (기본 비활성, 모두 '불가능' 누를 시 노출) -->
+                <div id="candidate-remarks-container" class="space-y-2 bg-rose-50/50 p-4 rounded-xl border border-rose-150 transition-all duration-300 hidden">
+                    <label class="block text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-pen-to-square"></i> 💡 모두 불가능할 경우, 가능한 일정을 작성해 주세요 (비고란)
+                    </label>
+                    <p class="text-[10px] text-slate-500 mb-1">인사담당자가 스케줄을 원활하게 재발송할 수 있도록 가능하신 시간이나 요일 설명을 상세하게 남겨주세요.</p>
+                    <textarea id="candidate-remarks" placeholder="예: 매주 목요일 오후 2시 이후나 수요일 오전 10시~12시 사이에는 원활하게 대면 및 화상 인터뷰 조율이 모두 가능합니다." class="w-full p-2.5 border border-rose-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white" rows="3"></textarea>
+                </div>
+
+                <!-- 결정 제출 버튼 -->
+                <div class="pt-4 border-t border-slate-150">
+                    <button type="button" onclick="submitCandidateResponse()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-md active:scale-[0.99] transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-share-from-square"></i> 선택한 결과 전송 (확정 또는 재조율)
+                    </button>
+                </div>
+            </section>
+
+            <!-- [3] 헤드헌터 관리 화면 (대시보드) -->
+            <section id="panel-headhunter" class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-6 hidden">
+                <div class="border-b border-slate-100 pb-4 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <span class="text-amber-600"><i class="fa-solid fa-briefcase"></i></span>
+                            조율 모니터링 현황
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">인사팀과 후보자의 입력 및 실제 전송 시스템을 제어합니다.</p>
+                    </div>
+                    <span class="bg-amber-50 text-amber-700 text-xs px-2.5 py-1 rounded-full font-bold border border-amber-100 shrink-0">Dashboard</span>
+                </div>
+
+                <!-- 헤드헌터 사전 정보 입력 및 링크 공유 생성 카드 (인사팀과 완벽 실시간 연동) -->
+                <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-4">
+                    <h3 class="text-xs font-bold text-indigo-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-link"></i> 인사팀 전송용 자동 데이터 링크 생성기
+                    </h3>
+                    <p class="text-[11px] text-slate-500 leading-normal">
+                        이곳에 기업과 후보자 정보를 입력하면 **인사팀 탭으로 실시간 연동**됩니다. <br> 
+                        실제 이메일 전송 환경에서 링크를 사용하시려면 **[실제 배포된 웹앱 URL]** 칸에 깃허브 페이지스 등의 완성 배포된 주소를 미리 입력해 두세요!
+                    </p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-0.5">회사명</label>
+                            <input type="text" id="hh-input-company" oninput="syncInputs('hh-input-company', 'hr-company')" value="㈜테크이노베이션" class="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-0.5">인사담당자 이메일</label>
+                            <input type="email" id="hh-input-hr-email" oninput="syncInputs('hh-input-hr-email', 'hr-email')" value="hr@techinno.com" class="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-0.5">후보자 이름</label>
+                            <input type="text" id="hh-input-cand-name" oninput="syncInputs('hh-input-cand-name', 'candidate-name')" value="홍길동" class="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-0.5">후보자 이메일</label>
+                            <input type="email" id="hh-input-cand-email" oninput="syncInputs('hh-input-cand-email', 'candidate-email')" value="candidate@email.com" class="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white">
+                        </div>
+                        <div class="md:col-span-2 bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100">
+                            <label class="block text-[10px] font-bold text-indigo-800 mb-0.5">실제 배포된 웹앱 URL (호스팅 주소)</label>
+                            <input type="text" id="hh-input-app-url" oninput="saveAppUrl()" placeholder="예: https://내아이디.github.io/scheduler/" class="w-full px-2.5 py-1.5 border border-indigo-200 rounded text-xs bg-white text-indigo-900 font-medium">
+                            <p class="text-[9px] text-indigo-500 mt-1">※ 내 컴퓨터 테스트(`file:///`) 상태에서 이메일을 보내면 외부 메일함에서 로컬 파일을 읽을 수 없어 링크 클릭 시 404가 뜹니다. 깃허브나 넷리파이 배포 주소를 이곳에 기입해 주시면 메일 링크가 완벽하게 교체 빌드됩니다.</p>
+                        </div>
+                    </div>
+                    <button type="button" onclick="generateAndCopyPreFilledLink()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs transition flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-paper-plane"></i> 인사팀 전용 공유 링크 생성 & 인사팀 이메일 즉시 전송
+                    </button>
+                </div>
+
+                <!-- 실제 이메일 전송 API 세팅 보관함 -->
+                <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <i class="fa-solid fa-envelope-open-text text-indigo-500"></i> 실제 이메일 발송 연동 (EmailJS API)
+                        </h3>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="real-email-toggle" onchange="toggleEmailJSActive()" class="sr-only peer">
+                            <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                            <span class="ml-1.5 text-[10px] font-bold text-slate-500" id="email-status-txt">미연동</span>
+                        </label>
+                    </div>
+                    
+                    <div id="emailjs-inputs-container" class="space-y-2 opacity-50 pointer-events-none transition-all duration-300">
+                        <p class="text-[10px] text-slate-500 leading-normal">
+                            무료 EmailJS 서비스를 생성한 뒤 아래 Key 값들을 입력해 주시면 실제 메일함으로 연동 발송이 처리됩니다. <br>
+                            ※ 템플릿 변수는 <code class="bg-slate-200 px-1 py-0.5 rounded text-rose-600 font-mono">{{to_email}}</code>, <code class="bg-slate-200 px-1 py-0.5 rounded text-rose-600 font-mono">{{subject}}</code>, <code class="bg-slate-200 px-1 py-0.5 rounded text-rose-600 font-mono">{{message}}</code> 세 가지만 템플릿 내에 배치해 주시면 완벽히 동작합니다.
+                        </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-[9px] text-slate-400 font-bold">Public Key</label>
+                                <input type="text" id="ejs-pubkey" placeholder="user_xxxx..." class="w-full p-1.5 border border-slate-300 rounded text-[11px] focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] text-slate-400 font-bold">Service ID</label>
+                                <input type="text" id="ejs-service" placeholder="service_xxxx..." class="w-full p-1.5 border border-slate-300 rounded text-[11px] focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] text-slate-400 font-bold">Template ID</label>
+                                <input type="text" id="ejs-template" placeholder="template_xxxx..." class="w-full p-1.5 border border-slate-300 rounded text-[11px] focus:outline-none">
+                            </div>
+                        </div>
+                        <button type="button" onclick="saveEmailJSSettings()" class="w-full bg-slate-800 text-white font-bold py-1.5 rounded text-[10px] hover:bg-slate-700 transition">
+                            메일 연동설정 브라우저에 저장
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 전체 현황 요약 카드 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                    <div class="border border-slate-200 bg-slate-50 p-3 rounded-xl">
+                        <p class="text-slate-400 font-bold mb-1">진행 현황</p>
+                        <div id="status-badge" class="inline-block font-extrabold px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                            일정 제안 대기중
+                        </div>
+                    </div>
+                    <div class="border border-slate-200 bg-slate-50 p-3 rounded-xl">
+                        <p class="text-slate-400 font-bold mb-1">인사담당자 메일</p>
+                        <p id="hh-hr-email" class="font-bold text-slate-700 truncate">-</p>
+                    </div>
+                    <div class="border border-slate-200 bg-slate-50 p-3 rounded-xl">
+                        <p class="text-slate-400 font-bold mb-1">인터뷰 대상 후보자</p>
+                        <p id="hh-candidate-email" class="font-bold text-slate-700 truncate">-</p>
+                    </div>
+                </div>
+
+                <!-- 현재 조율중인 시간 데이터 원본 확인 -->
+                <div class="border border-slate-200 rounded-xl overflow-hidden">
+                    <div class="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
+                        <h3 class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <i class="fa-solid fa-database text-amber-500"></i> 제안 타임슬롯 상태로그
+                        </h3>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-left">
+                            <thead class="bg-slate-100 text-slate-500 uppercase font-bold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-2.5">순위</th>
+                                    <th class="p-2.5">지정 일자 및 시간</th>
+                                    <th class="p-2.5">조율 여부</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hh-slots-table" class="divide-y divide-slate-100 text-slate-700">
+                                <tr>
+                                    <td colspan="3" class="p-4 text-center text-slate-400">등록 완료된 제안 일정이 대기 중입니다.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- 오른쪽: 알림 및 이메일 수신함 시뮬레이터 (1개 컬럼 차지) -->
+        <div class="space-y-4">
+            
+            <!-- 모바일 뷰 전용 가상 메일함 토글러 -->
+            <div class="bg-slate-900 text-slate-100 rounded-xl shadow-lg border border-slate-800 overflow-hidden flex flex-col">
+                <div class="bg-slate-800 px-4 py-3 flex items-center justify-between border-b border-slate-700 cursor-pointer" onclick="toggleMailboxMobile()">
+                    <div class="flex items-center space-x-2">
+                        <span class="flex h-2.5 w-2.5 relative">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <h3 class="font-bold text-xs text-slate-200 flex items-center gap-2">
+                            <i class="fa-solid fa-envelope"></i> 가상 수신 메일 로그 (실시간 링크 클릭 가능)
+                        </h3>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] bg-slate-700 text-emerald-400 px-2 py-0.5 rounded font-mono">Interactive</span>
+                        <span class="text-slate-400 text-xs md:hidden" id="mail-toggle-icon"><i class="fa-solid fa-chevron-up"></i></span>
+                    </div>
+                </div>
+
+                <!-- 이메일 보관함 리스트 -->
+                <div id="email-log-list" class="p-4 space-y-4 overflow-y-auto max-h-[350px] md:max-h-[520px] min-h-[160px] transition-all">
+                    <!-- 초기 안내 메시지 -->
+                    <div class="text-center py-6 text-slate-500 text-xs">
+                        <i class="fa-solid fa-paper-plane text-2xl mb-2 block opacity-30"></i>
+                        프로세스가 작동하기 시작하면 이곳에<br>발생되는 가상 시스템 노티 메일 내역이 쌓입니다.<br>
+                        <strong class="text-indigo-400 mt-2 block">본 가상메일함의 링크는 즉각 터치 및 클릭이 가능합니다!</strong>
+                    </div>
+                </div>
+
+                <!-- 초기화 및 안내 푸터 -->
+                <div class="p-3 bg-slate-800/80 border-t border-slate-700 flex items-center justify-between gap-1.5">
+                    <span class="text-[10px] text-slate-400">※ 실제 이메일 전송 흐름 시뮬레이터</span>
+                    <button onclick="clearEmailLog()" class="text-xs hover:text-white text-slate-400 font-bold px-2 py-1 hover:bg-slate-700 rounded transition shrink-0">
+                        로그 초기화
+                    </button>
+                </div>
+            </div>
+
+            <!-- 프로세스 가이드 카드 -->
+            <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-2 text-xs">
+                <h4 class="font-bold text-indigo-900 uppercase tracking-wide flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-question"></i> 원스톱 업무 시뮬레이션 가이드
+                </h4>
+                <ol class="text-indigo-800 space-y-1.5 list-decimal list-inside pl-1">
+                    <li><strong>[헤드헌터] 탭:</strong> 사전 정보를 기입하고 '공유 링크 복사 & 전송'을 누르세요. 복사 후 가상 메일함에 **인사팀 등록용 전용 접속 링크** 메일이 실시간 수신됩니다.</li>
+                    <li><strong>[인사팀] 탭:</strong> 1순위 일정을 반드시 기입하고, 2~4순위는 원하지 않는 경우 '입력하지 않음'에 체크한 뒤 <strong>[일정 입력하기]</strong>를 클릭하세요.</li>
+                    <li><strong>[후보자] 탭:</strong> 후보자 전용 메일에 도착한 **실시간 링크를 클릭**하여 접속한 뒤 가용한 시간을 회신합니다.</li>
+                </ol>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- 확정 모달 -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 hidden">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 text-center space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="mx-auto w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-xl">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <div>
+                <h3 class="text-base sm:text-lg font-bold text-slate-900" id="modal-title">일정 조율 완료</h3>
+                <p class="text-xs text-slate-500 mt-1" id="modal-desc">성공적으로 일정이 확정되어 양측에 이메일이 발송되었습니다.</p>
+            </div>
+            <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-150 text-xs text-left space-y-1.5 font-sans" id="modal-summary">
+                <!-- 확정 요약 데이터 출력 -->
+            </div>
+            <button onclick="closeModal()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition text-sm">
+                창 닫기 및 계속
+            </button>
+        </div>
+    </div>
+
+    <!-- 푸터 -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-8 text-center text-[10px] text-slate-400 shrink-0">
+        <p>© 2026 인터뷰 스케쥴 매니저. All rights reserved.</p>
+    </footer>
+
+    <script>
+        let appState = {
+            company: '㈜테크이노베이션',
+            hrEmail: 'hr@techinno.com',
+            candidateName: '홍길동',
+            candidateEmail: 'candidate@email.com',
+            method: '대면면접',
+            duration: '1시간 30분',
+            location: '본사 3층 대회의실 (서초구 서초대로 123)',
+            status: 'WAITING', // WAITING, PROPOSED, CONFIRMED, REJECTED
+            slots: []
+        };
+
+        // 헤드헌터 탭과 인사팀 탭의 입력을 실시간으로 동기화하는 함수
+        function syncInputs(sourceId, targetId) {
+            const val = document.getElementById(sourceId).value;
+            document.getElementById(targetId).value = val;
+            
+            // 전역 상태 실시간 업데이트
+            appState.company = document.getElementById('hr-company').value.trim();
+            appState.hrEmail = document.getElementById('hr-email').value.trim();
+            appState.candidateName = document.getElementById('candidate-name').value.trim();
+            appState.candidateEmail = document.getElementById('candidate-email').value.trim();
+
+            updateHHDashboard();
+        }
+
+        // 웹앱 배포 주소 직접 브라우저 세션 보관
+        function saveAppUrl() {
+            const url = document.getElementById('hh-input-app-url').value.trim();
+            localStorage.setItem('app_url', url);
+        }
+
+        // 타임슬롯 생성 (10분 단위 선택용 드롭다운)
+        function generateTimeOptions(selectedValue) {
+            let options = '';
+            for (let hour = 9; hour <= 20; hour++) {
+                const displayHour = hour < 10 ? '0' + hour : hour;
+                for (let min = 0; min < 60; min += 10) {
+                    const displayMin = min === 0 ? '00' : min;
+                    const timeStr = `${displayHour}:${displayMin}`;
+                    const selected = timeStr === selectedValue ? 'selected' : '';
+                    options += `<option value="${timeStr}" ${selected}>${timeStr}</option>`;
+                }
+            }
+            return options;
+        }
+
+        // 웹 전송 후 초기 데이터 빌드 및 전용 주소 처리
+        window.onload = function() {
+            // 이메일 설정 로컬스토리지 복구
+            restoreEmailJSSettings();
+
+            // 저장된 앱 URL 복구
+            const savedUrl = localStorage.getItem('app_url') || '';
+            document.getElementById('hh-input-app-url').value = savedUrl;
+
+            // URL 파라미터 파싱
+            const urlParams = new URLSearchParams(window.location.search);
+            const paramRole = urlParams.get('role'); // 'hr', 'candidate'
+            const paramStep = urlParams.get('step'); // '2'
+            
+            const paramCo = urlParams.get('co');
+            const paramHr = urlParams.get('hr');
+            const paramCname = urlParams.get('cname');
+            const paramCmail = urlParams.get('cmail');
+            const paramMethod = urlParams.get('method');
+            const paramDuration = urlParams.get('duration');
+            const paramLoc = urlParams.get('loc');
+            const paramSlots = urlParams.get('slots');
+            
+            // 재조율 파라미터 파싱 (실패한 이전 스케줄 및 비고란 내용 복구)
+            const paramRejectedSlots = urlParams.get('rejected_slots');
+            const paramRemarks = urlParams.get('remarks');
+
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const tomorrowDateStr = tomorrow.toISOString().split('T')[0];
+
+            // 1. 역할 기반 철저한 UI 렌더링 및 통제 분기 설정
+            let activeRole = 'headhunter'; // 파라미터가 없으면 마스터 헤드헌터 모드로 실행 (Switcher 보임)
+
+            if (paramRole === 'hr') {
+                activeRole = 'hr';
+            } else if (paramRole === 'candidate' || paramStep === '2') {
+                activeRole = 'candidate';
+            }
+
+            const roleTabs = document.getElementById('roleTabs');
+            const badgeContainer = document.getElementById('role-badge-container');
+
+            if (activeRole === 'hr' || activeRole === 'candidate') {
+                // 접속된 URL이 제약 역할이면, Switcher를 완전히 숨김
+                roleTabs.classList.add('hidden');
+                badgeContainer.classList.remove('hidden');
+
+                if (activeRole === 'hr') {
+                    badgeContainer.innerHTML = `
+                        <span class="bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1.5 rounded-lg border border-indigo-200 flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-building-user"></i> 🏢 기업 인사팀 전용 접속 모드
+                        </span>
+                    `;
+                } else if (activeRole === 'candidate') {
+                    badgeContainer.innerHTML = `
+                        <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-user-tie"></i> 👤 면접 후보자 전용 접속 모드
+                        </span>
+                    `;
+                }
+            } else {
+                // 헤드헌터 관리자 모드
+                roleTabs.classList.remove('hidden');
+                badgeContainer.classList.add('hidden');
+            }
+
+            // 2. 전달된 데이터 수집 처리 및 렌더링
+            if (paramCo || paramHr || paramCname || paramCmail) {
+                appState.company = paramCo || '';
+                appState.hrEmail = paramHr || '';
+                appState.candidateName = paramCname || '';
+                appState.candidateEmail = paramCmail || '';
+                appState.method = paramMethod || '대면면접';
+                appState.duration = paramDuration || '1시간 30분';
+                appState.location = paramLoc || '';
+                
+                // 인사팀 입력창에 값 세팅
+                document.getElementById('hr-company').value = appState.company;
+                document.getElementById('hr-email').value = appState.hrEmail;
+                document.getElementById('candidate-name').value = appState.candidateName;
+                document.getElementById('candidate-email').value = appState.candidateEmail;
+                document.getElementById('interview-method').value = appState.method;
+                document.getElementById('interview-duration').value = appState.duration;
+                document.getElementById('interview-location').value = appState.location;
+                toggleLocationField();
+
+                // 헤드헌터 입력창에도 실시간 동기화 완료
+                document.getElementById('hh-input-company').value = appState.company;
+                document.getElementById('hh-input-hr-email').value = appState.hrEmail;
+                document.getElementById('hh-input-cand-name').value = appState.candidateName;
+                document.getElementById('hh-input-cand-email').value = appState.candidateEmail;
+
+                // 전달된 전용 타임 슬롯 복원
+                if (paramSlots) {
+                    appState.slots = paramSlots.split('|').map((sStr, idx) => {
+                        const [date, time] = sStr.split('_');
+                        return {
+                            priority: idx + 1,
+                            date: date,
+                            time: time,
+                            status: 'pending'
+                        };
+                    });
+                    appState.status = 'PROPOSED';
+                }
+
+                alertCustom("공유된 실시간 조율 링크 데이터가 연동되었습니다.");
+                
+                // 재조율 실패 이력 렌더링 세팅 (빨간선 중앙 표기)
+                if (paramRejectedSlots) {
+                    const warningContainer = document.getElementById('rejected-slots-warning');
+                    const warningList = document.getElementById('rejected-slots-list');
+                    const remarksText = document.getElementById('rejected-remarks-text');
+                    const remarksBox = document.getElementById('rejected-remarks-box');
+
+                    warningList.innerHTML = '';
+                    const rejArr = paramRejectedSlots.split('|');
+                    
+                    rejArr.forEach((sStr, idx) => {
+                        const [date, time] = sStr.split('_');
+                        const li = document.createElement('li');
+                        li.className = "line-through decoration-rose-600 decoration-2 text-slate-400 font-semibold";
+                        li.innerHTML = `이전 ${idx+1}순위안: ${date} ${time} (불참석 피드백)`;
+                        warningList.appendChild(li);
+                    });
+
+                    if (paramRemarks) {
+                        remarksText.textContent = decodeURIComponent(paramRemarks);
+                        remarksBox.classList.remove('hidden');
+                    } else {
+                        remarksBox.classList.add('hidden');
+                    }
+
+                    warningContainer.classList.remove('hidden');
+                }
+            }
+
+            // 최초로 그냥 빈 창을 열었을 경우 기본 타임 슬롯 빌드
+            buildFixedTimeSlots(tomorrowDateStr);
+            
+            // 최종 역할 뷰 활성화
+            switchRole(activeRole);
+        };
+
+        function buildFixedTimeSlots(defaultDate) {
+            const container = document.getElementById('time-slot-container');
+            container.innerHTML = '';
+
+            const defaultTimes = ['10:00', '13:30', '15:10', '16:40'];
+
+            for (let i = 1; i <= 4; i++) {
+                const div = document.createElement('div');
+                div.id = `slot-row-${i}`;
+                div.className = "flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 relative transition-all";
+                
+                // 1순위는 필수, 2~4순위는 "입력하지 않음" 체크박스 제공
+                const isOmissible = i > 1;
+                const omissibleHTML = isOmissible 
+                    ? `<div class="absolute top-2 right-2 sm:relative sm:top-0 sm:right-0 shrink-0 flex items-center">
+                         <label class="inline-flex items-center space-x-1 cursor-pointer">
+                            <input type="checkbox" id="slot-omit-${i}" onchange="toggleSlotOmit(${i})" class="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4">
+                            <span class="text-[11px] font-bold text-rose-500">입력하지 않음</span>
+                         </label>
+                       </div>` 
+                    : `<div class="shrink-0 w-[84px] text-center hidden sm:block"><span class="text-[10px] text-slate-400 font-bold">필수입력</span></div>`;
+
+                div.innerHTML = `
+                    <div class="flex items-center space-x-2 sm:w-20 shrink-0">
+                        <span class="text-xs bg-indigo-100 text-indigo-700 font-bold px-2 py-1 rounded w-full text-center">
+                            ${i}순위
+                        </span>
+                    </div>
+                    
+                    <div class="flex-grow flex items-center space-x-1" id="slot-date-box-${i}">
+                        <span class="text-slate-400 text-xs shrink-0"><i class="fa-solid fa-calendar"></i></span>
+                        <input type="date" id="slot-date-${i}" value="${defaultDate}" class="slot-date bg-white border border-slate-300 rounded px-2.5 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    </div>
+
+                    <div class="w-full sm:w-32 flex items-center space-x-1" id="slot-time-box-${i}">
+                        <span class="text-slate-400 text-xs shrink-0"><i class="fa-solid fa-clock"></i></span>
+                        <select id="slot-time-${i}" class="slot-time bg-white border border-slate-300 rounded px-2.5 py-1.5 text-sm w-full focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                            ${generateTimeOptions(defaultTimes[i-1])}
+                        </select>
+                    </div>
+
+                    ${omissibleHTML}
+                `;
+
+                container.appendChild(div);
+            }
+        }
+
+        // 특정 순위 비활성화 토글
+        function toggleSlotOmit(index) {
+            const row = document.getElementById(`slot-row-${index}`);
+            const dateInput = document.getElementById(`slot-date-${index}`);
+            const timeSelect = document.getElementById(`slot-time-${index}`);
+            const isOmitted = document.getElementById(`slot-omit-${index}`).checked;
+
+            if (isOmitted) {
+                row.classList.add('opacity-40', 'bg-slate-100');
+                dateInput.disabled = true;
+                timeSelect.disabled = true;
+            } else {
+                row.classList.remove('opacity-40', 'bg-slate-100');
+                dateInput.disabled = false;
+                timeSelect.disabled = false;
+            }
+        }
+
+        // 대면 면접 선택 시 장소창 토글러
+        function toggleLocationField() {
+            const method = document.getElementById('interview-method').value;
+            const container = document.getElementById('location-field-container');
+            if (method === '대면면접') {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+                document.getElementById('interview-location').value = ''; 
+            }
+        }
+
+        // 역할 전환 컨트롤러
+        function switchRole(role) {
+            document.getElementById('panel-hr').classList.add('hidden');
+            document.getElementById('panel-candidate').classList.add('hidden');
+            document.getElementById('panel-headhunter').classList.add('hidden');
+
+            const hrBtn = document.getElementById('tab-hr');
+            const candBtn = document.getElementById('tab-candidate');
+            const hhBtn = document.getElementById('tab-headhunter');
+
+            [hrBtn, candBtn, hhBtn].forEach(btn => {
+                if (btn) btn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1";
+            });
+
+            if (role === 'hr') {
+                document.getElementById('panel-hr').classList.remove('hidden');
+                if (hrBtn) hrBtn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-indigo-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1";
+            } else if (role === 'candidate') {
+                document.getElementById('panel-candidate').classList.remove('hidden');
+                if (candBtn) candBtn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-emerald-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1";
+                renderCandidatePanel();
+            } else if (role === 'headhunter') {
+                document.getElementById('panel-headhunter').classList.remove('hidden');
+                if (hhBtn) hhBtn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-amber-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1";
+                updateHHDashboard();
+            }
+        }
+
+        // 이메일 수신함 토글 기능 (모바일 전용)
+        let isMailboxCollapsed = false;
+        function toggleMailboxMobile() {
+            const list = document.getElementById('email-log-list');
+            const icon = document.getElementById('mail-toggle-icon');
+            
+            if (window.innerWidth >= 768) return;
+
+            isMailboxCollapsed = !isMailboxCollapsed;
+            if (isMailboxCollapsed) {
+                list.style.display = 'none';
+                icon.innerHTML = `<i class="fa-solid fa-chevron-down"></i>`;
+            } else {
+                list.style.display = 'block';
+                icon.innerHTML = `<i class="fa-solid fa-chevron-up"></i>`;
+            }
+        }
+
+        function generateAndCopyPreFilledLink() {
+            const company = document.getElementById('hh-input-company').value.trim();
+            const hrEmail = document.getElementById('hh-input-hr-email').value.trim();
+            const candName = document.getElementById('hh-input-cand-name').value.trim();
+            const candEmail = document.getElementById('hh-input-cand-email').value.trim();
+
+            if (!company || !hrEmail || !candName || !candEmail) {
+                alertCustom("인사팀 전송을 위해 모든 정보를 빠짐없이 입력해 주세요.");
+                return;
+            }
+
+            let customAppUrl = document.getElementById('hh-input-app-url').value.trim();
+            let baseUri = customAppUrl || window.location.href.split('?')[0];
+            
+            if (baseUri.startsWith('file:///')) {
+                alertCustom("주의: 현재 PC 로컬 실행 상태입니다. 실제 이메일 발송 시 수신자는 이 링크를 열 수 없으므로 배포 후 URL 입력을 권장합니다.");
+            }
+
+            // 인사팀 링크 생성시 ?role=hr 파라미터를 추가하여, 인사팀 전용 모드 화면으로 열리도록 고정함
+            const preFilledUrl = `${baseUri}?role=hr&co=${encodeURIComponent(company)}&hr=${encodeURIComponent(hrEmail)}&cname=${encodeURIComponent(candName)}&cmail=${encodeURIComponent(candEmail)}`;
+
+            // 클립보드 자동 저장
+            const tempInput = document.createElement("input");
+            document.body.appendChild(tempInput);
+            tempInput.value = preFilledUrl;
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            // 인사팀으로 알림 이메일 자동 발송 처리
+            const hrEmailContent = `안녕하세요, ${company} 인사담당자님.
+헤드헌터 윤성미입니다.
+
+귀사에서 채용 진행 중이신 [후보자: ${candName}]님의 면접 조율을 시작해 주시기 바랍니다.
+아래의 인사팀 전용 실시간 링크에 접속하시면, 번거로운 가입이나 정보 입력 필요 없이 일정을 즉각 등록하여 후보자에게 일괄 송신하실 수 있습니다.
+
+■ 인사팀 전용 면접 일정 입력 접속 주소:
+${preFilledUrl}
+
+링크에 접속하여 원하시는 1~4순위 시간대를 기입한 뒤 [일정 입력하기] 버튼만 눌러 주시면 조율 프로세스가 간결하게 작동합니다.
+감사합니다.`;
+
+            sendSimulationEmail("headhunter-yun@agency.com", hrEmail, `[면접일정조율] ${company} - ${candName} 후보자 면접 조율 요청 (헤드헌터 윤성미)`, hrEmailContent);
+
+            alertCustom("공유 링크가 클립보드에 복사되었으며, 인사담당자 이메일로도 접속 링크를 발송 완료했습니다.");
+        }
+
+        // [이메일 연동 관련] UI 토글 제어 및 로컬스토리지 저장
+        function toggleEmailJSActive() {
+            const isActive = document.getElementById('real-email-toggle').checked;
+            const container = document.getElementById('emailjs-inputs-container');
+            const txt = document.getElementById('email-status-txt');
+
+            if (isActive) {
+                container.classList.remove('opacity-50', 'pointer-events-none');
+                txt.textContent = "연동 활성화";
+                txt.className = "ml-1.5 text-[10px] font-bold text-emerald-600";
+                localStorage.setItem('emailjs_enabled', 'true');
+            } else {
+                container.classList.add('opacity-50', 'pointer-events-none');
+                txt.textContent = "미연동 (가상로그)";
+                txt.className = "ml-1.5 text-[10px] font-bold text-slate-500";
+                localStorage.setItem('emailjs_enabled', 'false');
+            }
+        }
+
+        function saveEmailJSSettings() {
+            const pubKey = document.getElementById('ejs-pubkey').value.trim();
+            const serviceId = document.getElementById('ejs-service').value.trim();
+            const templateId = document.getElementById('ejs-template').value.trim();
+
+            if (!pubKey || !serviceId || !templateId) {
+                alertCustom("실제 이메일을 연동하려면 3가지 API 키를 채워 주셔야 합니다.");
+                return;
+            }
+
+            localStorage.setItem('emailjs_pubkey', pubKey);
+            localStorage.setItem('emailjs_service', serviceId);
+            localStorage.setItem('emailjs_template', templateId);
+            
+            emailjs.init(pubKey);
+            alertCustom("성공적으로 실제 이메일 전송 API 정보가 브라우저에 기억되었습니다.");
+        }
+
+        function restoreEmailJSSettings() {
+            const isEnabled = localStorage.getItem('emailjs_enabled') === 'true';
+            const pubKey = localStorage.getItem('emailjs_pubkey') || '';
+            const serviceId = localStorage.getItem('emailjs_service') || '';
+            const templateId = localStorage.getItem('emailjs_template') || '';
+
+            document.getElementById('ejs-pubkey').value = pubKey;
+            document.getElementById('ejs-service').value = serviceId;
+            document.getElementById('ejs-template').value = templateId;
+
+            if (pubKey) {
+                emailjs.init(pubKey);
+            }
+
+            if (isEnabled) {
+                document.getElementById('real-email-toggle').checked = true;
+                toggleEmailJSActive();
+            }
+        }
+
+        function sendSimulationEmail(sender, receiver, subject, content) {
+            const list = document.getElementById('email-log-list');
+            if (list.querySelector('.text-center')) {
+                list.innerHTML = '';
+            }
+
+            const now = new Date();
+            const timeStr = now.toTimeString().split(' ')[0];
+
+            let displayContent = content;
+            const urlRegex = /(https?:\/\/[^\s]+|file:\/\/\/[^\s]+)/g;
+            const matchedUrls = content.match(urlRegex);
+            
+            if (matchedUrls && matchedUrls.length > 0) {
+                matchedUrls.forEach(url => {
+                    const cleanUrl = url.trim().replace(/\n/g, '');
+                    let clickAction = `href="${cleanUrl}" target="_blank"`;
+                    if (cleanUrl.startsWith('file:///')) {
+                        clickAction = `href="javascript:void(0)" onclick="window.location.href='${cleanUrl}'"`;
+                    }
+                    const linkButtonHTML = `<div class="mt-3"><a ${clickAction} class="inline-flex items-center gap-1.5 bg-indigo-600 text-white font-bold px-3.5 py-1.5 rounded-lg hover:bg-indigo-700 transition active:scale-95 shadow-sm text-xs"><i class="fa-solid fa-arrow-pointer"></i> 👉 실시간 일정 조율 바로가기</a></div>`;
+                    displayContent = displayContent.replace(url, `<span class="break-all text-indigo-400 underline font-mono text-[10px]">${cleanUrl}</span>${linkButtonHTML}`);
+                });
+            }
+
+            const item = document.createElement('div');
+            item.className = "bg-slate-800 rounded-lg p-3.5 border-l-4 border-indigo-500 text-xs space-y-2 animate-fade-in";
+            item.innerHTML = `
+                <div class="flex justify-between text-[11px] text-slate-400 border-b border-slate-700 pb-1.5">
+                    <span>수신자: <strong class="text-slate-200">${receiver}</strong></span>
+                    <span>${timeStr}</span>
+                </div>
+                <div class="space-y-1">
+                    <div class="text-[10px] text-indigo-300 font-bold">[보낸사람: ${sender}]</div>
+                    <div class="font-bold text-slate-100 text-sm">${subject}</div>
+                    <div class="text-slate-300 whitespace-pre-line leading-relaxed pt-1 font-sans bg-slate-900 p-2.5 rounded border border-slate-700/50">${displayContent}</div>
+                </div>
+            `;
+            list.prepend(item);
+
+            const isRealEmailEnabled = localStorage.getItem('emailjs_enabled') === 'true';
+            const serviceId = localStorage.getItem('emailjs_service');
+            const templateId = localStorage.getItem('emailjs_template');
+
+            if (isRealEmailEnabled && serviceId && templateId) {
+                const params = {
+                    to_email: receiver,
+                    subject: subject,
+                    message: content
+                };
+
+                emailjs.send(serviceId, templateId, params)
+                    .then(response => {
+                        console.log('실제 이메일 발송 성공:', response.status, response.text);
+                    })
+                    .catch(err => {
+                        console.error('실제 이메일 발송 에러:', err);
+                        alertCustom(`실제 이메일 발송 에러 발생: ${err.text || err}`);
+                    });
+            }
+        }
+
+        function clearEmailLog() {
+            document.getElementById('email-log-list').innerHTML = `
+                <div class="text-center py-8 text-slate-500 text-xs">
+                    <i class="fa-solid fa-paper-plane text-3xl mb-3 block opacity-30"></i>
+                    로그가 초기화되었습니다. 신규 전송 진행 시 가상 메일이 수신됩니다.
+                </div>
+            `;
+        }
+
+        function submitHRProposal() {
+            appState.company = document.getElementById('hr-company').value.trim();
+            appState.hrEmail = document.getElementById('hr-email').value.trim();
+            appState.candidateName = document.getElementById('candidate-name').value.trim();
+            appState.candidateEmail = document.getElementById('candidate-email').value.trim();
+            appState.method = document.getElementById('interview-method').value;
+            appState.duration = document.getElementById('interview-duration').value;
+            appState.location = document.getElementById('interview-location').value.trim();
+
+            if (!appState.company || !appState.hrEmail || !appState.candidateName || !appState.candidateEmail) {
+                alertCustom("기본 회사 정보 및 후보자 연락처 정보를 모두 기입해 주세요.");
+                return;
+            }
+
+            if (appState.method === '대면면접' && !appState.location) {
+                alertCustom("대면 면접 진행 장소를 상세하게 입력해 주세요.");
+                return;
+            }
+
+            appState.slots = [];
+
+            // 1순위 데이터 체크
+            const firstDate = document.getElementById('slot-date-1').value;
+            const firstTime = document.getElementById('slot-time-1').value;
+            if (!firstDate) {
+                alertCustom("1순위 면접 일정의 날짜를 지정해 주세요.");
+                return;
+            }
+            appState.slots.push({
+                priority: 1,
+                date: firstDate,
+                time: firstTime,
+                status: 'pending'
+            });
+
+            for (let i = 2; i <= 4; i++) {
+                const isOmitted = document.getElementById(`slot-omit-${i}`).checked;
+                if (!isOmitted) {
+                    const dateVal = document.getElementById(`slot-date-${i}`).value;
+                    const timeVal = document.getElementById(`slot-time-${i}`).value;
+
+                    if (!dateVal) {
+                        alertCustom(`${i}순위 일정의 날짜를 선택하시거나, 사용하지 않을 경우 [입력하지 않음]에 체크해 주십시오.`);
+                        return;
+                    }
+                    appState.slots.push({
+                        priority: i,
+                        date: dateVal,
+                        time: timeVal,
+                        status: 'pending'
+                    });
+                }
+            }
+
+            appState.status = 'PROPOSED';
+
+            let customAppUrl = document.getElementById('hh-input-app-url').value.trim();
+            let baseUri = customAppUrl || window.location.href.split('?')[0];
+            
+            const slotString = appState.slots.map(s => `${s.date}_${s.time}`).join('|');
+            
+            // 후보자 일정 회신용 주소에는 ?role=candidate 지정을 통해 후보자 맞춤형 화면으로 강제 리디렉션 처리함
+            const candidateUrl = `${baseUri}?role=candidate&co=${encodeURIComponent(appState.company)}&hr=${encodeURIComponent(appState.hrEmail)}&cname=${encodeURIComponent(appState.candidateName)}&cmail=${encodeURIComponent(appState.candidateEmail)}&method=${encodeURIComponent(appState.method)}&duration=${encodeURIComponent(appState.duration)}&loc=${encodeURIComponent(appState.location)}&slots=${encodeURIComponent(slotString)}`;
+
+            const locationText = appState.method === '대면면접' ? ` (${appState.location})` : '';
+            
+            let emailContent = `안녕하세요, ${appState.candidateName} 후보자님.
+헤드헌터 윤성미입니다. 
+
+면접 시간 조율을 위해 아래 링크를 제공하오니 접속하여 가능 여부를 회신해 주시길 정중히 요청해 드립니다.
+
+[면접 세부 조율 정보]
+■ 인터뷰 형태: ${appState.method}${locationText}
+■ 예상 시간: ${appState.duration}
+
+[회사에서 제안하는 인터뷰 후보안 목록]
+${appState.slots.map(s => `・ [${s.priority}순위안] ${s.date} ${s.time}`).join('\n')}
+
+아래의 실시간 일정 조율 전용 주소에 접속하시면, 위 타임 슬롯 중 귀하가 가용한 일정을 빠르게 체크하여 송신하실 수 있습니다.
+
+■ 실시간 일정 조율 접속 주소:
+${candidateUrl}
+
+감사합니다.`;
+
+            sendSimulationEmail("headhunter-yun@agency.com", appState.candidateEmail, `[면접조율] ${appState.company} 인터뷰 일정 조율 요청 (헤드헌터 윤성미)`, emailContent);
+
+            alertCustom("일정이 등록되어 후보자에게 조율 메일이 자동 송신되었습니다.");
+            
+            // 만약 현재가 전체 권한을 가진 헤드헌터 마스터 모드라면, 바로 후보자 화면을 시연해 볼 수 있도록 candidate 탭으로 전환시킴
+            const urlParams = new URLSearchParams(window.location.search);
+            if (!urlParams.get('role')) {
+                switchRole('candidate');
+            } else {
+                // 인사팀 전용 모드일 때는 화면 전환 없이 그대로 안내
+                showModal("제안 등록 완료!", "후보자에게 조율 메일이 실시간 자동 발송되었습니다. 후보자의 응답을 대기해 주세요.", `
+                    <strong>후보자:</strong> ${appState.candidateName}<br>
+                    <strong>메일 주소:</strong> ${appState.candidateEmail}
+                `, true);
+            }
+        }
+
+        function renderCandidatePanel() {
+            document.getElementById('cond-company').textContent = `${appState.company} (${appState.hrEmail})`;
+            
+            const locationDesc = (appState.method === '대면면접' && appState.location) ? ` (장소: ${appState.location})` : '';
+            document.getElementById('cond-details').textContent = `${appState.method}${locationDesc} / ${appState.duration}`;
+
+            const listContainer = document.getElementById('candidate-slots-list');
+            listContainer.innerHTML = '';
+
+            if (appState.slots.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-dashed text-xs">
+                        인사팀에서 제시한 면접 시간대가 존재하지 않습니다.<br>먼저 '인사팀' 탭에서 스케줄을 입력해 주십시오.
+                    </div>
+                `;
+                return;
+            }
+
+            appState.slots.forEach(slot => {
+                const dayName = getDayName(slot.date);
+                const isSelected = slot.status === 'available' ? 'border-emerald-500 bg-emerald-50/40' : (slot.status === 'unavailable' ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200');
+
+                const item = document.createElement('div');
+                item.className = `flex flex-col sm:flex-row items-stretch sm:items-center justify-between p-3.5 rounded-xl border ${isSelected} transition-all gap-3`;
+                item.id = `cand-slot-${slot.priority}`;
+                
+                item.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-indigo-50 text-indigo-700 font-extrabold px-2 py-1 rounded text-[11px] shrink-0 text-center w-14">
+                            ${slot.priority}순위
+                        </div>
+                        <div class="text-xs">
+                            <div class="font-bold text-slate-800 flex items-center gap-1">
+                                <i class="fa-regular fa-calendar text-slate-400"></i> ${slot.date} (${dayName})
+                            </div>
+                            <div class="text-slate-500 font-semibold mt-0.5">
+                                <i class="fa-regular fa-clock text-slate-400"></i> 시작시간: ${slot.time}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2 shrink-0">
+                        <button type="button" onclick="setSlotStatus(${slot.priority}, 'available')" 
+                            id="btn-avail-${slot.priority}" 
+                            class="text-xs font-bold py-2 px-3 rounded-lg border ${slot.status === 'available' ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200 text-slate-600'} transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-circle-check"></i> 가능
+                        </button>
+                        <button type="button" onclick="setSlotStatus(${slot.priority}, 'unavailable')" 
+                            id="btn-unavail-${slot.priority}" 
+                            class="text-xs font-bold py-2 px-3 rounded-lg border ${slot.status === 'unavailable' ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 text-slate-600'} transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-circle-xmark"></i> 불가
+                        </button>
+                    </div>
+                `;
+                listContainer.appendChild(item);
+            });
+
+            // 비고란 초기 활성화 여부 점검
+            checkAllUnavailable();
+        }
+
+        function setSlotStatus(priority, status) {
+            const slot = appState.slots.find(s => s.priority === priority);
+            if (slot) slot.status = status;
+
+            const card = document.getElementById(`cand-slot-${priority}`);
+            if (status === 'available') {
+                card.className = "flex flex-col sm:flex-row items-stretch sm:items-center justify-between p-3.5 rounded-xl border border-emerald-500 bg-emerald-50/40 transition-all gap-3";
+            } else {
+                card.className = "flex flex-col sm:flex-row items-stretch sm:items-center justify-between p-3.5 rounded-xl border border-rose-300 bg-rose-50/40 transition-all gap-3";
+            }
+
+            const btnAvail = document.getElementById('btn-avail-' + priority);
+            const btnUnavail = document.getElementById('btn-unavail-' + priority);
+
+            if (status === 'available') {
+                btnAvail.className = "text-xs font-bold py-2 px-3 rounded-lg border bg-emerald-600 border-emerald-600 text-white transition flex items-center justify-center gap-1";
+                btnUnavail.className = "text-xs font-bold py-2 px-3 rounded-lg border bg-white border-slate-200 text-slate-600 transition flex items-center justify-center gap-1";
+            } else {
+                btnAvail.className = "text-xs font-bold py-2 px-3 rounded-lg border bg-white border-slate-200 text-slate-600 transition flex items-center justify-center gap-1";
+                btnUnavail.className = "text-xs font-bold py-2 px-3 rounded-lg border bg-rose-600 border-rose-600 text-white transition flex items-center justify-center gap-1";
+            }
+
+            // 모든 항목의 상태 변경 후 비고란(모두 불참석 체크 시 노출) 활성 여부 판단
+            checkAllUnavailable();
+        }
+
+        // 모든 일정 '불가능' 선택 시 비고란 토글 함수
+        function checkAllUnavailable() {
+            const total = appState.slots.length;
+            const unavailables = appState.slots.filter(s => s.status === 'unavailable').length;
+            const container = document.getElementById('candidate-remarks-container');
+
+            if (total > 0 && total === unavailables) {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+
+        function submitCandidateResponse() {
+            const unreplied = appState.slots.filter(s => s.status === 'pending');
+            if (unreplied.length > 0) {
+                alertCustom("모든 제안 순위 일정에 가능/불가를 최종 체크해 주셔야 전송 가능합니다.");
+                return;
+            }
+
+            const availableSlots = appState.slots.filter(s => s.status === 'available');
+            const locationText = appState.method === '대면면접' ? ` (${appState.location})` : '';
+
+            if (availableSlots.length > 0) {
+                availableSlots.sort((a, b) => a.priority - b.priority);
+                const finalMatchedSlot = availableSlots[0];
+
+                appState.status = 'CONFIRMED';
+
+                let confirmEmailContent = `안녕하세요, ${appState.candidateName} 후보자님.
+헤드헌터 윤성미입니다.
+
+귀하와 ${appState.company} 간의 면접 일정이 양측 조율을 통해 다음과 같이 최종 확정되었습니다.
+
+[최종 인터뷰 확정 스케줄]
+■ 확정 일시: ${finalMatchedSlot.date} (${getDayName(finalMatchedSlot.date)}) / ${finalMatchedSlot.time} 시작
+■ 면접 방식: ${appState.method}${locationText}
+■ 면접 소요: ${appState.duration}
+
+일정에 차질이 없도록 준비 부탁드립니다. 감사합니다.`;
+
+                sendSimulationEmail("headhunter-yun@agency.com", appState.candidateEmail, `[최종확정] ${appState.company} 면접 일정이 확정되었습니다. (헤드헌터 윤성미)`, confirmEmailContent);
+
+                let hrConfirmEmailContent = `안녕하세요, ${appState.company} 인사담당자님.
+헤드헌터 윤성미입니다.
+            
+귀사에서 제안해 주신 인터뷰 일정에 후보자 회신이 완료되었습니다.
+제시하신 일정 중 가장 우선순위가 높은 [${finalMatchedSlot.priority}순위] 일정으로 조율이 성공적으로 끝났습니다.
+
+[최종 확정된 일정 상세]
+■ 대상 후보자: ${appState.candidateName} (${appState.candidateEmail})
+■ 일시: ${finalMatchedSlot.date} (${getDayName(finalMatchedSlot.date)}) / ${finalMatchedSlot.time} 시작
+■ 진행 방식: ${appState.method}${locationText}
+■ 예정 소요: ${appState.duration}
+
+안내된 확정 일시를 캘린더에 기입해 주시길 바랍니다. 감사합니다.`;
+
+                sendSimulationEmail("headhunter-yun@agency.com", appState.hrEmail, `[조율성공] ${appState.candidateName} 후보자 인터뷰 최종 확정 안내 (헤드헌터 윤성미)`, hrConfirmEmailContent);
+
+                showModal("인터뷰 일정 확정!", "가장 우선순위가 높은 일정으로 조율에 성공하여 양측에 최종 초대장을 발송했습니다.", `
+                    <strong>회사명:</strong> ${appState.company}<br>
+                    <strong>후보자:</strong> ${appState.candidateName}<br>
+                    <strong>확정 일정:</strong> ${finalMatchedSlot.date} - ${finalMatchedSlot.time} (${appState.duration}) ${locationText}
+                `, true);
+
+            } else {
+                // 모두 불참석 피드백 및 재조율 메일 발송 프로세스
+                appState.status = 'REJECTED';
+
+                const remarksVal = document.getElementById('candidate-remarks').value.trim();
+                
+                let customAppUrl = document.getElementById('hh-input-app-url').value.trim();
+                let baseUri = customAppUrl || window.location.href.split('?')[0];
+
+                const slotString = appState.slots.map(s => `${s.date}_${s.time}`).join('|');
+                
+                // 인사팀 재설정 주소에도 ?role=hr를 인코딩하여 포함시킵니다.
+                const retryUrl = `${baseUri}?role=hr&co=${encodeURIComponent(appState.company)}&hr=${encodeURIComponent(appState.hrEmail)}&cname=${encodeURIComponent(appState.candidateName)}&cmail=${encodeURIComponent(appState.candidateEmail)}&rejected_slots=${encodeURIComponent(slotString)}&remarks=${encodeURIComponent(remarksVal)}`;
+
+                // 이메일 제목에 요청하신 [면접일정 재조율] 명시 완료
+                let rejectEmailContent = `[면접일정 재조율 안내]
+
+${appState.company} 인사담당자님 안녕하세요.
+헤드헌터 윤성미입니다.
+            
+현재 조율 진행 중인 ${appState.candidateName} 후보자의 일정 조율 결과에 대한 불가 피드백입니다.
+인사팀에서 제안해 주신 모든 가능 일정이 후보자의 기존 스케줄과 맞지 않아 참여가 '모두 불가'한 것으로 응답되었습니다.
+
+원활한 면접 진행을 위해, 후보자가 작성해 주신 대안 일정을 참고하시어 아래 일정 재조율용 전용 주소에 접속해 새로운 시간으로 다시 지정하여 발송해 주시기 바랍니다.
+
+■ 대상 후보자: ${appState.candidateName} (${appState.candidateEmail})
+
+■ 💡 후보자가 전달한 대안 가능 일정 (비고 내용):
+"${remarksVal || '작성된 상세 비고가 없습니다.'}"
+
+■ 기존 불가 처리 이력 (중복 선택되지 않도록 빨간선 처리됨):
+${appState.slots.map(s => `・ [${s.priority}순위안] ${s.date} ${s.time} (불가)`).join('\n')}
+
+■ 새로운 면접 일정 재입력 주소 (클릭 시 불가 항목이 마킹되어 열립니다):
+${retryUrl}
+
+번거로우시겠지만 후보자 피드백을 확인하여 신속한 면접 조율 재진행 협조 부탁드립니다. 감사합니다.`;
+
+                // [면접일정 재조율] 전용 메일 전송
+                sendSimulationEmail("headhunter-yun@agency.com", appState.hrEmail, `[면접일정 재조율] ${appState.company} - ${appState.candidateName} 후보자 일정 재협의 요청 (헤드헌터 윤성미)`, rejectEmailContent);
+
+                showModal("모두 불가능 접수 완료", "일정 불가 피드백 및 비고란 의견이 기업 인사담당자에게 실시간 메일로 즉시 발송되었습니다. 인사팀에서 다른 일정으로 다시 제안을 발송하게 됩니다.", `
+                    <strong>대상 기업:</strong> ${appState.company}<br>
+                    <strong>결과 조치:</strong> ${appState.hrEmail} 담당자 앞 [면접일정 재조율] 상세 요청 메일 전송 완료
+                `, false);
+            }
+
+            updateHHDashboard();
+        }
+
+        function updateHHDashboard() {
+            const badge = document.getElementById('status-badge');
+            if (appState.status === 'WAITING') {
+                badge.className = "inline-block text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700";
+                badge.textContent = "일정 제안 대기중";
+            } else if (appState.status === 'PROPOSED') {
+                badge.className = "inline-block text-xs font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800";
+                badge.textContent = "후보자 피드백 대기";
+            } else if (appState.status === 'CONFIRMED') {
+                badge.className = "inline-block text-xs font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800";
+                badge.textContent = "조율 최종 완료";
+            } else if (appState.status === 'REJECTED') {
+                badge.className = "inline-block text-xs font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800";
+                badge.textContent = "불가능 (재요청 상태)";
+            }
+
+            const tbody = document.getElementById('hh-slots-table');
+            if (appState.slots.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="p-4 text-center text-slate-400">등록 완료된 제안 일정이 대기 중입니다.</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = '';
+            appState.slots.forEach(slot => {
+                let fbText = '';
+                if (slot.status === 'pending') {
+                    fbText = `<span class="text-slate-400"><i class="fa-regular fa-clock"></i> 대기</span>`;
+                } else if (slot.status === 'available') {
+                    fbText = `<span class="text-emerald-600 font-extrabold"><i class="fa-solid fa-circle-check"></i> 가능</span>`;
+                } else {
+                    fbText = `<span class="text-rose-500 font-extrabold"><i class="fa-solid fa-circle-xmark"></i> 불가능</span>`;
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 border-b border-slate-100";
+                tr.innerHTML = `
+                    <td class="p-3 font-semibold text-slate-500">${slot.priority}순위</td>
+                    <td class="p-3 font-medium text-slate-800">${slot.date} (${getDayName(slot.date)}) - ${slot.time}</td>
+                    <td class="p-3">${fbText}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function getDayName(dateStr) {
+            if (!dateStr) return '';
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            const date = new Date(dateStr);
+            return days[date.getDay()];
+        }
+
+        function closeModal() {
+            document.getElementById('confirm-modal').classList.add('hidden');
+            
+            // 만약 제한된 전용 모드 접속 유저(인사팀 또는 후보자)라면, 불필요하게 타 탭(헤드헌터 등)으로 제어권을 옮기지 않고 현재 탭을 강제 고정함
+            const urlParams = new URLSearchParams(window.location.search);
+            const isRestricted = urlParams.get('role') || urlParams.get('step');
+
+            if (!isRestricted) {
+                // 관리자 헤드헌터 모드일 때만 자동 탭 변경 분기 허용
+                if (appState.status === 'REJECTED') {
+                    switchRole('hr');
+                } else if (appState.status === 'CONFIRMED') {
+                    switchRole('headhunter');
+                }
+            }
+        }
+
+        function showModal(title, desc, summaryHtml, isSuccess) {
+            const modal = document.getElementById('confirm-modal');
+            modal.querySelector('#modal-title').textContent = title;
+            modal.querySelector('#modal-desc').textContent = desc;
+            modal.querySelector('#modal-summary').innerHTML = summaryHtml;
+
+            const iconContainer = modal.querySelector('.mx-auto');
+            if (isSuccess) {
+                iconContainer.className = "mx-auto w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-xl";
+                iconContainer.innerHTML = `<i class="fa-solid fa-circle-check"></i>`;
+            } else {
+                iconContainer.className = "mx-auto w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center text-xl";
+                iconContainer.innerHTML = `<i class="fa-solid fa-clock-rotate-left"></i>`;
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function alertCustom(msg) {
+            const toast = document.createElement('div');
+            toast.className = "fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-xs px-5 py-3 rounded-xl shadow-xl z-50 flex items-center gap-2 border border-slate-700";
+            toast.innerHTML = `<i class="fa-solid fa-info-circle text-amber-400"></i> <span>${msg}</span>`;
+            document.body.appendChild(toast);
+            setTimeout(() => { toast.remove(); }, 3000);
+        }
+    </script>
+</body>
+</html>
