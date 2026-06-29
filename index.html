@@ -123,7 +123,6 @@
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">예상 소요 시간</label>
                             <select id="interview-duration" class="w-full px-3 py-2 border border-slate-300 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                                <!-- 10분 단위 선택 옵션 -->
                                 <option value="10분">10분</option>
                                 <option value="20분">20분</option>
                                 <option value="30분">30분</option>
@@ -488,6 +487,11 @@
             const paramSlots = urlParams.get('slots');
             const paramStep = urlParams.get('step');
 
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const tomorrowDateStr = tomorrow.toISOString().split('T')[0];
+
             if (paramCo || paramHr || paramCname || paramCmail) {
                 appState.company = paramCo || '';
                 appState.hrEmail = paramHr || '';
@@ -533,17 +537,14 @@
                     switchRole('candidate'); // 후보자 단계이면 즉시 후보자 화면으로 진입
                     return;
                 } else {
-                    switchRole('hr'); // 기본값은 인사팀 화면으로 전송 (질문하신 404 해결 이후 정확하게 인사팀 화면이 뜨도록 조치)
+                    // [버그 해결]: 인사팀 전용 공유 링크로 랜딩 시, 조율 1~4순위 입력 항목을 먼저 빌드해 준 뒤 화면을 전환합니다.
+                    buildFixedTimeSlots(tomorrowDateStr);
+                    switchRole('hr'); 
                     return;
                 }
             }
 
-            const today = new Date();
-            const tomorrow = new Date(today);
-            tomorrow.setDate(today.getDate() + 1);
-            const tomorrowDateStr = tomorrow.toISOString().split('T')[0];
-
-            // 고정된 4개의 슬롯 생성
+            // 최초로 그냥 빈 창을 열었을 경우 기본 타임 슬롯 빌드
             buildFixedTimeSlots(tomorrowDateStr);
             updateHHDashboard();
         };
@@ -683,11 +684,9 @@
                 return;
             }
 
-            // [주요 해결책]: 사용자가 명시한 실제 배포 주소가 있다면 그걸 쓰고, 없다면 현재 브라우저 주소를 기본값으로 동적 채택
             let customAppUrl = document.getElementById('hh-input-app-url').value.trim();
             let baseUri = customAppUrl || window.location.href.split('?')[0];
             
-            // 로컬 주소인데 입력란이 빈 경우 경고 안내 및 안전 장치
             if (baseUri.startsWith('file:///')) {
                 alertCustom("주의: 현재 PC 로컬 실행 상태입니다. 실제 이메일 발송 시 수신자는 이 링크를 열 수 없으므로 배포 후 URL 입력을 권장합니다.");
             }
@@ -786,7 +785,6 @@ ${preFilledUrl}
             const now = new Date();
             const timeStr = now.toTimeString().split(' ')[0];
 
-            // 이메일 내용에서 주소를 감지하여 실제로 '터치/클릭'이 가능하게 보정
             let displayContent = content;
             const urlRegex = /(https?:\/\/[^\s]+|file:\/\/\/[^\s]+)/g;
             const matchedUrls = content.match(urlRegex);
@@ -794,7 +792,6 @@ ${preFilledUrl}
             if (matchedUrls && matchedUrls.length > 0) {
                 matchedUrls.forEach(url => {
                     const cleanUrl = url.trim().replace(/\n/g, '');
-                    // 로컬 테스트 중인 경우 자바스크립트로 직접 페이지를 새로 고칠 수 있게 구현 (차단 우회)
                     let clickAction = `href="${cleanUrl}" target="_blank"`;
                     if (cleanUrl.startsWith('file:///')) {
                         clickAction = `href="javascript:void(0)" onclick="window.location.href='${cleanUrl}'"`;
@@ -869,10 +866,9 @@ ${preFilledUrl}
                 return;
             }
 
-            // 고정된 4개의 슬롯 데이터 수집
             appState.slots = [];
 
-            // 1순위 데이터 체크 (필수)
+            // 1순위 데이터 체크
             const firstDate = document.getElementById('slot-date-1').value;
             const firstTime = document.getElementById('slot-time-1').value;
             if (!firstDate) {
@@ -886,7 +882,6 @@ ${preFilledUrl}
                 status: 'pending'
             });
 
-            // 2순위 ~ 4순위 중 체크 안된 활성 항목 추가
             for (let i = 2; i <= 4; i++) {
                 const isOmitted = document.getElementById(`slot-omit-${i}`).checked;
                 if (!isOmitted) {
@@ -908,7 +903,6 @@ ${preFilledUrl}
 
             appState.status = 'PROPOSED';
 
-            // 실제 배포 도메인 주소 반영
             let customAppUrl = document.getElementById('hh-input-app-url').value.trim();
             let baseUri = customAppUrl || window.location.href.split('?')[0];
             
@@ -1113,7 +1107,6 @@ ${retryUrl}
             updateHHDashboard();
         }
 
-        // 헤드헌터 대시보드 업데이트
         function updateHHDashboard() {
             const badge = document.getElementById('status-badge');
             if (appState.status === 'WAITING') {
@@ -1172,7 +1165,7 @@ ${retryUrl}
         function closeModal() {
             document.getElementById('confirm-modal').classList.add('hidden');
             if (appState.status === 'REJECTED') {
-                switchRole('hr'); // 곧바로 새로운 시간 입력 화면으로 회귀 처리
+                switchRole('hr');
             } else if (appState.status === 'CONFIRMED') {
                 switchRole('headhunter');
             }
@@ -1198,7 +1191,7 @@ ${retryUrl}
 
         function alertCustom(msg) {
             const toast = document.createElement('div');
-            toast.className = "fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-xs px-5 py-3 rounded-xl shadow-xl z-50 flex items-center gap-2 border border-slate-700 animate-bounce";
+            toast.className = "fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-xs px-5 py-3 rounded-xl shadow-xl z-50 flex items-center gap-2 border border-slate-700";
             toast.innerHTML = `<i class="fa-solid fa-info-circle text-amber-400"></i> <span>${msg}</span>`;
             document.body.appendChild(toast);
             setTimeout(() => { toast.remove(); }, 3000);
