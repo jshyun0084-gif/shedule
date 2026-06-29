@@ -48,7 +48,7 @@
                 </div>
             </div>
             
-            <!-- 역할 전환 탭 -->
+            <!-- 역할 전환 탭 (헤드헌터 전용 - 일반 유입 시 가려짐) -->
             <div class="grid grid-cols-3 bg-slate-100 p-1 rounded-lg border border-slate-200 w-full md:w-auto" id="roleTabs">
                 <button onclick="switchRole('hr')" id="tab-hr" class="px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-indigo-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1">
                     <i class="fa-solid fa-building-user text-[13px] sm:text-xs"></i><span>인사팀</span>
@@ -60,13 +60,16 @@
                     <i class="fa-solid fa-briefcase text-[13px] sm:text-xs"></i><span>헤드헌터</span>
                 </button>
             </div>
+
+            <!-- 전용 접속 모드 배지 (URL 파라미터가 있을 시 렌더링) -->
+            <div id="role-badge-container" class="hidden w-full md:w-auto flex justify-center md:justify-end"></div>
         </div>
     </header>
 
     <!-- 무로그인 안내 알림 탑바 -->
     <div class="bg-emerald-50 border-b border-emerald-100 px-4 py-2 text-center text-xs text-emerald-800 font-medium flex items-center justify-center gap-1.5">
         <i class="fa-solid fa-shield-halved text-emerald-600"></i>
-        <span><strong>서버리스 워크스페이스:</strong> 로그인 없이 브라우저 저장소와 안전한 인코딩 링크만으로 조율 데이터를 전달합니다.</span>
+        <span><strong>보안 통신 터널링:</strong> 별도의 회원가입 없이 암호화된 전용 세션 파라미터를 통하여 접근 권한이 엄격히 자동 보장됩니다.</span>
     </div>
 
     <!-- 메인 레이아웃 -->
@@ -81,11 +84,26 @@
                     <div>
                         <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
                             <span class="text-indigo-600"><i class="fa-solid fa-building-user"></i></span>
-                            인터뷰 일정 정보 등록
+                            인터뷰 일정 정보 등록 (인사팀)
                         </h2>
                         <p class="text-xs text-slate-500 mt-0.5">후보자에게 제안할 일정을 입력해 주세요. (1순위 필수, 2~4순위는 선택)</p>
                     </div>
                     <span class="bg-indigo-50 text-indigo-700 text-xs px-2.5 py-1 rounded-full font-bold border border-indigo-100 shrink-0">Step 1</span>
+                </div>
+
+                <!-- 이전 실패한 일정 경고 및 취소선 리스트 -->
+                <div id="rejected-slots-warning" class="bg-rose-50 border border-rose-150 p-4 rounded-xl text-xs space-y-2 hidden">
+                    <p class="font-bold text-rose-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-exclamation text-rose-600"></i>
+                        후보자가 불가능하다고 회신한 일정 목록 (피해서 입력해 주세요)
+                    </p>
+                    <ul class="list-disc list-inside text-rose-700 pl-1 space-y-1" id="rejected-slots-list">
+                        <!-- 동적으로 이전 실패 일정이 빨간 줄로 표시됨 -->
+                    </ul>
+                    <div class="mt-2 text-[11px] text-slate-600 font-medium bg-white p-2.5 rounded-lg border border-rose-200" id="rejected-remarks-box">
+                        <span class="text-rose-600 font-bold block mb-1">💡 후보자 대안일정 제안 의견:</span>
+                        <p id="rejected-remarks-text" class="italic whitespace-pre-wrap text-slate-700"></p>
+                    </div>
                 </div>
 
                 <!-- 기본 정보 입력 (헤드헌터 탭과 실시간 상호 양방향 동기화) -->
@@ -139,7 +157,7 @@
                         </div>
                     </div>
                     
-                    <!-- 대면 면접 전용 장소 입력창 (기본 활성화 노출) -->
+                    <!-- 대면 면접 전용 장소 입력창 -->
                     <div id="location-field-container" class="transition-all duration-300">
                         <label class="block text-xs font-bold text-rose-600 uppercase tracking-wider mb-1">면접 진행 장소</label>
                         <input type="text" id="interview-location" value="본사 3층 대회의실 (서초구 서초대로 123)" placeholder="예: 본사 3층 대회의실 (서초구 서초대로 123)" class="w-full px-3 py-2 border border-rose-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white">
@@ -195,6 +213,15 @@
                     <div id="candidate-slots-list" class="space-y-3">
                         <!-- 인사팀 제안 슬롯 렌더링 -->
                     </div>
+                </div>
+
+                <!-- 후보자 전용 가능일정 피드백 비고란 (기본 비활성, 모두 '불가능' 누를 시 노출) -->
+                <div id="candidate-remarks-container" class="space-y-2 bg-rose-50/50 p-4 rounded-xl border border-rose-150 transition-all duration-300 hidden">
+                    <label class="block text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-pen-to-square"></i> 💡 모두 불가능할 경우, 가능한 일정을 작성해 주세요 (비고란)
+                    </label>
+                    <p class="text-[10px] text-slate-500 mb-1">인사담당자가 스케줄을 원활하게 재발송할 수 있도록 가능하신 시간이나 요일 설명을 상세하게 남겨주세요.</p>
+                    <textarea id="candidate-remarks" placeholder="예: 매주 목요일 오후 2시 이후나 수요일 오전 10시~12시 사이에는 원활하게 대면 및 화상 인터뷰 조율이 모두 가능합니다." class="w-full p-2.5 border border-rose-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 bg-white" rows="3"></textarea>
                 </div>
 
                 <!-- 결정 제출 버튼 -->
@@ -407,7 +434,7 @@
             <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-150 text-xs text-left space-y-1.5 font-sans" id="modal-summary">
                 <!-- 확정 요약 데이터 출력 -->
             </div>
-            <button onclick="closeModal()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition text-xs">
+            <button onclick="closeModal()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition text-sm">
                 창 닫기 및 계속
             </button>
         </div>
@@ -477,6 +504,9 @@
 
             // URL 파라미터 파싱
             const urlParams = new URLSearchParams(window.location.search);
+            const paramRole = urlParams.get('role'); // 'hr', 'candidate'
+            const paramStep = urlParams.get('step'); // '2'
+            
             const paramCo = urlParams.get('co');
             const paramHr = urlParams.get('hr');
             const paramCname = urlParams.get('cname');
@@ -485,13 +515,53 @@
             const paramDuration = urlParams.get('duration');
             const paramLoc = urlParams.get('loc');
             const paramSlots = urlParams.get('slots');
-            const paramStep = urlParams.get('step');
+            
+            // 재조율 파라미터 파싱 (실패한 이전 스케줄 및 비고란 내용 복구)
+            const paramRejectedSlots = urlParams.get('rejected_slots');
+            const paramRemarks = urlParams.get('remarks');
 
             const today = new Date();
             const tomorrow = new Date(today);
             tomorrow.setDate(today.getDate() + 1);
             const tomorrowDateStr = tomorrow.toISOString().split('T')[0];
 
+            // 1. 역할 기반 철저한 UI 렌더링 및 통제 분기 설정
+            let activeRole = 'headhunter'; // 파라미터가 없으면 마스터 헤드헌터 모드로 실행 (Switcher 보임)
+
+            if (paramRole === 'hr') {
+                activeRole = 'hr';
+            } else if (paramRole === 'candidate' || paramStep === '2') {
+                activeRole = 'candidate';
+            }
+
+            const roleTabs = document.getElementById('roleTabs');
+            const badgeContainer = document.getElementById('role-badge-container');
+
+            if (activeRole === 'hr' || activeRole === 'candidate') {
+                // 접속된 URL이 제약 역할이면, Switcher를 완전히 숨김
+                roleTabs.classList.add('hidden');
+                badgeContainer.classList.remove('hidden');
+
+                if (activeRole === 'hr') {
+                    badgeContainer.innerHTML = `
+                        <span class="bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1.5 rounded-lg border border-indigo-200 flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-building-user"></i> 🏢 기업 인사팀 전용 접속 모드
+                        </span>
+                    `;
+                } else if (activeRole === 'candidate') {
+                    badgeContainer.innerHTML = `
+                        <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-user-tie"></i> 👤 면접 후보자 전용 접속 모드
+                        </span>
+                    `;
+                }
+            } else {
+                // 헤드헌터 관리자 모드
+                roleTabs.classList.remove('hidden');
+                badgeContainer.classList.add('hidden');
+            }
+
+            // 2. 전달된 데이터 수집 처리 및 렌더링
             if (paramCo || paramHr || paramCname || paramCmail) {
                 appState.company = paramCo || '';
                 appState.hrEmail = paramHr || '';
@@ -533,20 +603,40 @@
 
                 alertCustom("공유된 실시간 조율 링크 데이터가 연동되었습니다.");
                 
-                if (paramStep === '2') {
-                    switchRole('candidate'); // 후보자 단계이면 즉시 후보자 화면으로 진입
-                    return;
-                } else {
-                    // [버그 해결]: 인사팀 전용 공유 링크로 랜딩 시, 조율 1~4순위 입력 항목을 먼저 빌드해 준 뒤 화면을 전환합니다.
-                    buildFixedTimeSlots(tomorrowDateStr);
-                    switchRole('hr'); 
-                    return;
+                // 재조율 실패 이력 렌더링 세팅 (빨간선 중앙 표기)
+                if (paramRejectedSlots) {
+                    const warningContainer = document.getElementById('rejected-slots-warning');
+                    const warningList = document.getElementById('rejected-slots-list');
+                    const remarksText = document.getElementById('rejected-remarks-text');
+                    const remarksBox = document.getElementById('rejected-remarks-box');
+
+                    warningList.innerHTML = '';
+                    const rejArr = paramRejectedSlots.split('|');
+                    
+                    rejArr.forEach((sStr, idx) => {
+                        const [date, time] = sStr.split('_');
+                        const li = document.createElement('li');
+                        li.className = "line-through decoration-rose-600 decoration-2 text-slate-400 font-semibold";
+                        li.innerHTML = `이전 ${idx+1}순위안: ${date} ${time} (불참석 피드백)`;
+                        warningList.appendChild(li);
+                    });
+
+                    if (paramRemarks) {
+                        remarksText.textContent = decodeURIComponent(paramRemarks);
+                        remarksBox.classList.remove('hidden');
+                    } else {
+                        remarksBox.classList.add('hidden');
+                    }
+
+                    warningContainer.classList.remove('hidden');
                 }
             }
 
             // 최초로 그냥 빈 창을 열었을 경우 기본 타임 슬롯 빌드
             buildFixedTimeSlots(tomorrowDateStr);
-            updateHHDashboard();
+            
+            // 최종 역할 뷰 활성화
+            switchRole(activeRole);
         };
 
         function buildFixedTimeSlots(defaultDate) {
@@ -638,19 +728,19 @@
             const hhBtn = document.getElementById('tab-headhunter');
 
             [hrBtn, candBtn, hhBtn].forEach(btn => {
-                btn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1";
+                if (btn) btn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all text-slate-600 hover:text-slate-900 flex flex-col sm:flex-row items-center justify-center gap-1";
             });
 
             if (role === 'hr') {
                 document.getElementById('panel-hr').classList.remove('hidden');
-                hrBtn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-indigo-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1";
+                if (hrBtn) hrBtn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-indigo-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1";
             } else if (role === 'candidate') {
                 document.getElementById('panel-candidate').classList.remove('hidden');
-                candBtn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-emerald-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1";
+                if (candBtn) candBtn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-emerald-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1";
                 renderCandidatePanel();
             } else if (role === 'headhunter') {
                 document.getElementById('panel-headhunter').classList.remove('hidden');
-                hhBtn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-amber-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1";
+                if (hhBtn) hhBtn.className = "px-2 py-2 text-xs md:text-sm font-semibold rounded-md transition-all bg-white text-amber-600 shadow-sm flex flex-col sm:flex-row items-center justify-center gap-1";
                 updateHHDashboard();
             }
         }
@@ -691,7 +781,8 @@
                 alertCustom("주의: 현재 PC 로컬 실행 상태입니다. 실제 이메일 발송 시 수신자는 이 링크를 열 수 없으므로 배포 후 URL 입력을 권장합니다.");
             }
 
-            const preFilledUrl = `${baseUri}?co=${encodeURIComponent(company)}&hr=${encodeURIComponent(hrEmail)}&cname=${encodeURIComponent(candName)}&cmail=${encodeURIComponent(candEmail)}`;
+            // 인사팀 링크 생성시 ?role=hr 파라미터를 추가하여, 인사팀 전용 모드 화면으로 열리도록 고정함
+            const preFilledUrl = `${baseUri}?role=hr&co=${encodeURIComponent(company)}&hr=${encodeURIComponent(hrEmail)}&cname=${encodeURIComponent(candName)}&cmail=${encodeURIComponent(candEmail)}`;
 
             // 클립보드 자동 저장
             const tempInput = document.createElement("input");
@@ -907,7 +998,9 @@ ${preFilledUrl}
             let baseUri = customAppUrl || window.location.href.split('?')[0];
             
             const slotString = appState.slots.map(s => `${s.date}_${s.time}`).join('|');
-            const candidateUrl = `${baseUri}?co=${encodeURIComponent(appState.company)}&hr=${encodeURIComponent(appState.hrEmail)}&cname=${encodeURIComponent(appState.candidateName)}&cmail=${encodeURIComponent(appState.candidateEmail)}&method=${encodeURIComponent(appState.method)}&duration=${encodeURIComponent(appState.duration)}&loc=${encodeURIComponent(appState.location)}&slots=${encodeURIComponent(slotString)}&step=2`;
+            
+            // 후보자 일정 회신용 주소에는 ?role=candidate 지정을 통해 후보자 맞춤형 화면으로 강제 리디렉션 처리함
+            const candidateUrl = `${baseUri}?role=candidate&co=${encodeURIComponent(appState.company)}&hr=${encodeURIComponent(appState.hrEmail)}&cname=${encodeURIComponent(appState.candidateName)}&cmail=${encodeURIComponent(appState.candidateEmail)}&method=${encodeURIComponent(appState.method)}&duration=${encodeURIComponent(appState.duration)}&loc=${encodeURIComponent(appState.location)}&slots=${encodeURIComponent(slotString)}`;
 
             const locationText = appState.method === '대면면접' ? ` (${appState.location})` : '';
             
@@ -933,7 +1026,18 @@ ${candidateUrl}
             sendSimulationEmail("headhunter-yun@agency.com", appState.candidateEmail, `[면접조율] ${appState.company} 인터뷰 일정 조율 요청 (헤드헌터 윤성미)`, emailContent);
 
             alertCustom("일정이 등록되어 후보자에게 조율 메일이 자동 송신되었습니다.");
-            switchRole('candidate');
+            
+            // 만약 현재가 전체 권한을 가진 헤드헌터 마스터 모드라면, 바로 후보자 화면을 시연해 볼 수 있도록 candidate 탭으로 전환시킴
+            const urlParams = new URLSearchParams(window.location.search);
+            if (!urlParams.get('role')) {
+                switchRole('candidate');
+            } else {
+                // 인사팀 전용 모드일 때는 화면 전환 없이 그대로 안내
+                showModal("제안 등록 완료!", "후보자에게 조율 메일이 실시간 자동 발송되었습니다. 후보자의 응답을 대기해 주세요.", `
+                    <strong>후보자:</strong> ${appState.candidateName}<br>
+                    <strong>메일 주소:</strong> ${appState.candidateEmail}
+                `, true);
+            }
         }
 
         function renderCandidatePanel() {
@@ -992,6 +1096,9 @@ ${candidateUrl}
                 `;
                 listContainer.appendChild(item);
             });
+
+            // 비고란 초기 활성화 여부 점검
+            checkAllUnavailable();
         }
 
         function setSlotStatus(priority, status) {
@@ -1014,6 +1121,22 @@ ${candidateUrl}
             } else {
                 btnAvail.className = "text-xs font-bold py-2 px-3 rounded-lg border bg-white border-slate-200 text-slate-600 transition flex items-center justify-center gap-1";
                 btnUnavail.className = "text-xs font-bold py-2 px-3 rounded-lg border bg-rose-600 border-rose-600 text-white transition flex items-center justify-center gap-1";
+            }
+
+            // 모든 항목의 상태 변경 후 비고란(모두 불참석 체크 시 노출) 활성 여부 판단
+            checkAllUnavailable();
+        }
+
+        // 모든 일정 '불가능' 선택 시 비고란 토글 함수
+        function checkAllUnavailable() {
+            const total = appState.slots.length;
+            const unavailables = appState.slots.filter(s => s.status === 'unavailable').length;
+            const container = document.getElementById('candidate-remarks-container');
+
+            if (total > 0 && total === unavailables) {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
             }
         }
 
@@ -1070,37 +1193,49 @@ ${candidateUrl}
                 `, true);
 
             } else {
+                // 모두 불참석 피드백 및 재조율 메일 발송 프로세스
                 appState.status = 'REJECTED';
 
+                const remarksVal = document.getElementById('candidate-remarks').value.trim();
+                
                 let customAppUrl = document.getElementById('hh-input-app-url').value.trim();
                 let baseUri = customAppUrl || window.location.href.split('?')[0];
 
-                const retryUrl = `${baseUri}?co=${encodeURIComponent(appState.company)}&hr=${encodeURIComponent(appState.hrEmail)}&cname=${encodeURIComponent(appState.candidateName)}&cmail=${encodeURIComponent(appState.candidateEmail)}`;
+                const slotString = appState.slots.map(s => `${s.date}_${s.time}`).join('|');
+                
+                // 인사팀 재설정 주소에도 ?role=hr를 인코딩하여 포함시킵니다.
+                const retryUrl = `${baseUri}?role=hr&co=${encodeURIComponent(appState.company)}&hr=${encodeURIComponent(appState.hrEmail)}&cname=${encodeURIComponent(appState.candidateName)}&cmail=${encodeURIComponent(appState.candidateEmail)}&rejected_slots=${encodeURIComponent(slotString)}&remarks=${encodeURIComponent(remarksVal)}`;
 
-                let rejectEmailContent = `[일정 재조율 긴급 안내]
+                // 이메일 제목에 요청하신 [면접일정 재조율] 명시 완료
+                let rejectEmailContent = `[면접일정 재조율 안내]
 
 ${appState.company} 인사담당자님 안녕하세요.
 헤드헌터 윤성미입니다.
             
-현재 조율 진행 중인 ${appState.candidateName} 후보자의 일정 조율이 지연되었습니다.
-인사팀에서 제안해 주신 모든 가능 일정이 후보자의 일정과 맞지 않아 참여가 '모두 불가'한 것으로 응답되었습니다.
+현재 조율 진행 중인 ${appState.candidateName} 후보자의 일정 조율 결과에 대한 불가 피드백입니다.
+인사팀에서 제안해 주신 모든 가능 일정이 후보자의 기존 스케줄과 맞지 않아 참여가 '모두 불가'한 것으로 응답되었습니다.
 
-원활한 면접 진행을 위해 아래 제공해 드리는 일정 재생성 주소에 접속하신 뒤, 다른 일정으로 새로운 시간을 지정해 재전송해 주시기를 요청해 드립니다.
+원활한 면접 진행을 위해, 후보자가 작성해 주신 대안 일정을 참고하시어 아래 일정 재조율용 전용 주소에 접속해 새로운 시간으로 다시 지정하여 발송해 주시기 바랍니다.
 
 ■ 대상 후보자: ${appState.candidateName} (${appState.candidateEmail})
-■ 기존 제안 불가 처리 이력:
-${appState.slots.map(s => `・ [${s.priority}순위안] ${s.date} ${s.time} (불참석)`).join('\n')}
 
-■ 새로운 면접 일정 재입력 주소 (클릭하여 새로 입력):
+■ 💡 후보자가 전달한 대안 가능 일정 (비고 내용):
+"${remarksVal || '작성된 상세 비고가 없습니다.'}"
+
+■ 기존 불가 처리 이력 (중복 선택되지 않도록 빨간선 처리됨):
+${appState.slots.map(s => `・ [${s.priority}순위안] ${s.date} ${s.time} (불가)`).join('\n')}
+
+■ 새로운 면접 일정 재입력 주소 (클릭 시 불가 항목이 마킹되어 열립니다):
 ${retryUrl}
 
-번거로우시겠지만 신속한 조율 협조 부탁드립니다. 감사합니다.`;
+번거로우시겠지만 후보자 피드백을 확인하여 신속한 면접 조율 재진행 협조 부탁드립니다. 감사합니다.`;
 
-                sendSimulationEmail("headhunter-yun@agency.com", appState.hrEmail, `[재입력 요청] ${appState.candidateName} 후보자 인터뷰 제안일정 모두 불가 피드백 (헤드헌터 윤성미)`, rejectEmailContent);
+                // [면접일정 재조율] 전용 메일 전송
+                sendSimulationEmail("headhunter-yun@agency.com", appState.hrEmail, `[면접일정 재조율] ${appState.company} - ${appState.candidateName} 후보자 일정 재협의 요청 (헤드헌터 윤성미)`, rejectEmailContent);
 
-                showModal("모두 불가능 접수 완료", "일정 불가 의사가 기업 담당자에게 즉시 통보되었습니다. 기업 인사담당자가 새로운 가능한 시간대를 다시 발송하게 됩니다.", `
+                showModal("모두 불가능 접수 완료", "일정 불가 피드백 및 비고란 의견이 기업 인사담당자에게 실시간 메일로 즉시 발송되었습니다. 인사팀에서 다른 일정으로 다시 제안을 발송하게 됩니다.", `
                     <strong>대상 기업:</strong> ${appState.company}<br>
-                    <strong>결과 조치:</strong> ${appState.hrEmail} 담당자 앞 일정 재입력 요청 메일 전송 완료
+                    <strong>결과 조치:</strong> ${appState.hrEmail} 담당자 앞 [면접일정 재조율] 상세 요청 메일 전송 완료
                 `, false);
             }
 
@@ -1164,10 +1299,18 @@ ${retryUrl}
 
         function closeModal() {
             document.getElementById('confirm-modal').classList.add('hidden');
-            if (appState.status === 'REJECTED') {
-                switchRole('hr');
-            } else if (appState.status === 'CONFIRMED') {
-                switchRole('headhunter');
+            
+            // 만약 제한된 전용 모드 접속 유저(인사팀 또는 후보자)라면, 불필요하게 타 탭(헤드헌터 등)으로 제어권을 옮기지 않고 현재 탭을 강제 고정함
+            const urlParams = new URLSearchParams(window.location.search);
+            const isRestricted = urlParams.get('role') || urlParams.get('step');
+
+            if (!isRestricted) {
+                // 관리자 헤드헌터 모드일 때만 자동 탭 변경 분기 허용
+                if (appState.status === 'REJECTED') {
+                    switchRole('hr');
+                } else if (appState.status === 'CONFIRMED') {
+                    switchRole('headhunter');
+                }
             }
         }
 
